@@ -1,0 +1,10 @@
+.env
+venv/
+__pycache__/
+*.pyc
+*.db
+bot.log
+launchd.log
+bot_debug.log
+bot.pid
+nohup.out
