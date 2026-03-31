@@ -1,5 +1,6 @@
 """Entry point: runs FastAPI (uvicorn) in a thread + Telegram bot in asyncio."""
 from __future__ import annotations
+import sys; print(">>> main.py loaded", flush=True, file=sys.stderr)
 
 import asyncio
 import logging
