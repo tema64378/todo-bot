@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from datetime import datetime, date, timedelta
 from typing import Optional, List
 
-DB_PATH = "tasks.db"
+DB_PATH = os.getenv("DB_PATH", "tasks.db")
 CATEGORIES = ["Работа", "Личное", "Учёба", "Здоровье", "Финансы", "Другое"]
 
 ACHIEVEMENTS = {
