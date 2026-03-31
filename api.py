@@ -135,7 +135,12 @@ def update_settings_api(body: SettingsUpdate, user_id: int = Depends(get_user_id
     return db.get_settings(user_id)
 
 
-# Serve built frontend
+# Static assets (must be mounted BEFORE the catch-all /app route)
+_assets_dir = os.path.join(FRONTEND_DIST, "assets")
+if os.path.isdir(_assets_dir):
+    app.mount("/app/assets", StaticFiles(directory=_assets_dir), name="assets")
+
+# Serve built frontend (catch-all — must come AFTER static mounts)
 @app.get("/app/{full_path:path}")
 async def serve_app(full_path: str = ""):
     index = os.path.join(FRONTEND_DIST, "index.html")
@@ -146,8 +151,3 @@ async def serve_app(full_path: str = ""):
 @app.get("/app")
 async def serve_app_root():
     return await serve_app("")
-
-# Static assets
-_assets_dir = os.path.join(FRONTEND_DIST, "assets")
-if os.path.isdir(_assets_dir):
-    app.mount("/app/assets", StaticFiles(directory=_assets_dir), name="assets")
