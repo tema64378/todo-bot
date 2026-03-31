@@ -5,21 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Мои задачи</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  </head>
-  <body>
-    <div id="root">
-      <div id="pre-load" style="display:flex;align-items:center;justify-content:center;height:100vh;color:#fff;font-family:sans-serif;font-size:16px">
-        Загрузка...
-      </div>
-    </div>
     <script>
+      // Call ready() immediately so Telegram shows content, not the robot splash
+      try {
+        if (window.Telegram && window.Telegram.WebApp) {
+          window.Telegram.WebApp.ready();
+          window.Telegram.WebApp.expand();
+        }
+      } catch(e) {}
       window.onerror = function(msg, src, line, col, err) {
+        document.body.style.background = '#1c1c1e';
         document.getElementById('root').innerHTML =
-          '<div style="color:#ff3b30;padding:20px;font-family:sans-serif;font-size:14px;white-space:pre-wrap">' +
+          '<div style="color:#ff3b30;padding:20px;font-family:sans-serif;font-size:13px;white-space:pre-wrap">' +
           'JS ERROR:\n' + msg + '\n' + (src||'') + ':' + line + '\n' + (err&&err.stack||'') +
           '</div>';
       };
+      window.addEventListener('unhandledrejection', function(e) {
+        document.body.style.background = '#1c1c1e';
+        document.getElementById('root').innerHTML =
+          '<div style="color:#ff3b30;padding:20px;font-family:sans-serif;font-size:13px;white-space:pre-wrap">' +
+          'PROMISE ERROR:\n' + e.reason + '</div>';
+      });
     </script>
+  </head>
+  <body>
+    <div id="root">
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#aaa;font-family:sans-serif;font-size:16px">
+        Загрузка...
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
