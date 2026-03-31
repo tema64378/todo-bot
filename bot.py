@@ -31,6 +31,9 @@ SUB_TITLE = 11
 TMPL_SAVE_NAME = 12
 
 # ── Constants ─────────────────────────────────────────────────
+PHOTO_DONE    = "AgACAgIAAxkDAAN0acuV2IcLvqWjvv4Om47rYjCXrBAAAiMZaxuoj2BKqUvTPFRSePQBAAMCAAN4AAM6BA"
+PHOTO_OVERDUE = "AgACAgIAAxkDAAN1acuV2Zo50-H5NS84qN1YfgABXcW6AAIkGWsbqI9gSnxreqeYb2ZiAQADAgADeAADOgQ"
+
 PRI_EMOJI  = {"high": "🔴", "medium": "🟡", "low": "🟢"}
 PRI_LABEL  = {"high": "Высокий", "medium": "Средний", "low": "Низкий"}
 REPEAT_LBL = {"none": "Не повторять", "daily": "Каждый день",
@@ -165,7 +168,7 @@ async def cmd_quick(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
     text = " ".join(ctx.args)
-    title, priority, deadline = db.parse_quick_add(text)
+    title, priority, deadline, deadline_time = db.parse_quick_add(text)
     task_id = db.add_task(
         update.effective_user.id, title, priority, "Другое", deadline, None, "none"
     )
@@ -275,7 +278,9 @@ async def recv_repeat(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user_id = q.from_user.id
     d = ctx.user_data
     task_id = db.add_task(user_id, d["title"], d["priority"], d["category"],
-                          d.get("deadline"), d.get("notes"), repeat)
+                          d.get("deadline"), d.get("notes"), repeat,
+                          deadline_time=d.get("deadline_time"),
+                          remind_at=d.get("remind_at"))
     pri = f"{PRI_EMOJI[d['priority']]} {PRI_LABEL[d['priority']]}"
     dl_str = (datetime.strptime(d["deadline"], "%Y-%m-%d").strftime("%d.%m.%Y")
               if d.get("deadline") else "не задан")
@@ -450,7 +455,11 @@ async def cmd_done(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     task = db.mark_done(tid, update.effective_user.id)
     if task:
         rep = " 🔁 Создана следующая задача!" if task.get("repeat") != "none" else ""
-        await update.message.reply_text(f"✅ Задача #{tid} выполнена!{rep}")
+        await update.message.reply_photo(
+            photo=PHOTO_DONE,
+            caption=f"✅ *Задача #{tid} выполнена!*{rep}\n📌 {task['title']}",
+            parse_mode="Markdown",
+        )
         await _notify_new_achievements(update.message, update.effective_user.id)
     else:
         await update.message.reply_text(f"❌ Задача #{tid} не найдена или уже выполнена.")
@@ -833,6 +842,15 @@ async def button_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         tid = int(data.split(":")[1])
         task = db.mark_done(tid, user_id)
         if task:
+            rep = " 🔁 Следующая задача создана!" if task.get("repeat") != "none" else ""
+            try:
+                await q.message.reply_photo(
+                    photo=PHOTO_DONE,
+                    caption=f"✅ *Задача #{tid} выполнена!*{rep}\n📌 {task['title']}",
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                pass
             new_ach = db.check_achievements(user_id)
             for key in new_ach:
                 emoji, name, _ = db.ACHIEVEMENTS[key]
@@ -1036,6 +1054,8 @@ async def send_notification(app: Application, user_id: int, is_morning: bool = F
     if not any(tasks.values()):
         return
 
+    has_overdue = bool(tasks["overdue"])
+
     lines = ["🔔 *Напоминание о задачах*\n"]
 
     if is_morning:
@@ -1062,19 +1082,27 @@ async def send_notification(app: Application, user_id: int, is_morning: bool = F
 
     lines.append("\n📋 /list · 🎯 /focus")
 
-    # Snooze button for overdue tasks
     kb = None
-    if tasks["overdue"]:
+    if has_overdue:
         kb = InlineKeyboardMarkup([[
             InlineKeyboardButton("💤 Отложить все просроченные на 1 день",
                                  callback_data="snooze_all:1"),
         ]])
 
     try:
-        await app.bot.send_message(
-            chat_id=user_id, text="\n".join(lines),
-            parse_mode="Markdown", reply_markup=kb,
-        )
+        if has_overdue:
+            await app.bot.send_photo(
+                chat_id=user_id,
+                photo=PHOTO_OVERDUE,
+                caption="\n".join(lines),
+                parse_mode="Markdown",
+                reply_markup=kb,
+            )
+        else:
+            await app.bot.send_message(
+                chat_id=user_id, text="\n".join(lines),
+                parse_mode="Markdown", reply_markup=kb,
+            )
         log.info(f"Уведомление → {user_id}")
     except Exception as e:
         log.error(f"Ошибка уведомления {user_id}: {e}")

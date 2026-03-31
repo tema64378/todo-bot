@@ -9,13 +9,37 @@ DB_PATH = "tasks.db"
 CATEGORIES = ["Работа", "Личное", "Учёба", "Здоровье", "Финансы", "Другое"]
 
 ACHIEVEMENTS = {
-    "first_task":  ("🌱", "Первая задача",        "Создал первую задачу"),
-    "done_10":     ("🥉", "10 задач выполнено",    "Выполнил 10 задач"),
-    "done_50":     ("🥈", "50 задач выполнено",    "Выполнил 50 задач"),
-    "done_100":    ("🥇", "100 задач выполнено",   "Выполнил 100 задач"),
-    "streak_7":    ("🔥", "Неделя без остановки",  "Стрик 7 дней подряд"),
-    "streak_30":   ("💎", "Месяц без остановки",   "Стрик 30 дней подряд"),
-    "early_bird":  ("⚡", "Сделал заранее",        "Выполнил задачу раньше дедлайна"),
+    # Прогресс
+    "first_task":      ("🌱", "Первые шаги",           "Создал первую задачу"),
+    "done_5":          ("✨", "Разогрев",               "Выполнил 5 задач"),
+    "done_10":         ("🥉", "В ритме",                "Выполнил 10 задач"),
+    "done_50":         ("🥈", "Полусотня",              "Выполнил 50 задач"),
+    "done_100":        ("🥇", "Сотня",                  "Выполнил 100 задач"),
+    "done_200":        ("🚀", "Двести и не сбавляю",    "Выполнил 200 задач"),
+    "done_500":        ("👑", "Легенда продуктивности", "Выполнил 500 задач"),
+    # Стрики
+    "streak_3":        ("🌤", "Три дня подряд",         "Стрик 3 дня подряд"),
+    "streak_7":        ("🔥", "Неделя без остановки",   "Стрик 7 дней подряд"),
+    "streak_14":       ("🌊", "Две недели",             "Стрик 14 дней подряд"),
+    "streak_30":       ("💎", "Месяц без остановки",    "Стрик 30 дней подряд"),
+    "streak_100":      ("⚡", "Сотня дней подряд",      "Стрик 100 дней подряд"),
+    # Время
+    "night_owl":       ("🦉", "Ночная сова",            "Выполнил задачу после 23:00"),
+    "early_riser":     ("🐓", "Ранняя пташка",          "Выполнил задачу до 7:00"),
+    # Продуктивность
+    "speed_run":       ("⚡", "Молниеносный",           "Создал и выполнил задачу в тот же день"),
+    "multitasker":     ("🎯", "День-марафон",           "Выполнил 5 задач за один день"),
+    "inbox_zero":      ("🧹", "Чистый лист",            "Выполнил все активные задачи"),
+    "high_prio_10":    ("🔴", "Мастер срочных дел",     "Выполнил 10 задач с высоким приоритетом"),
+    # Планирование
+    "planner":         ("📅", "Планировщик",            "Создал 10 задач с дедлайном"),
+    "early_bird":      ("🎯", "Пунктуальный",           "Выполнил задачу раньше дедлайна"),
+    "early_bird_5":    ("🏹", "Всегда вовремя",         "Выполнил 5 задач раньше дедлайна"),
+    # Фичи
+    "subtask_user":    ("🧩", "Декомпозиция",           "Создал задачу с подзадачами"),
+    "tag_user":        ("🏷", "Тегировщик",             "Создал задачи с 3 разными тегами"),
+    "category_master": ("📁", "Разносторонний",         "Использовал 4 разные категории"),
+    "repeat_user":     ("🔄", "Привычка",               "Создал повторяющуюся задачу"),
 }
 
 
@@ -44,6 +68,8 @@ def init_db():
                 category        TEXT NOT NULL DEFAULT 'Другое',
                 tags            TEXT,
                 deadline        TEXT,
+                deadline_time   TEXT,
+                remind_at       TEXT,
                 notes           TEXT,
                 repeat          TEXT NOT NULL DEFAULT 'none',
                 done            INTEGER NOT NULL DEFAULT 0,
@@ -52,11 +78,13 @@ def init_db():
             )
         """)
         for col, defn in [
-            ("category",     "TEXT NOT NULL DEFAULT 'Другое'"),
-            ("tags",         "TEXT"),
-            ("notes",        "TEXT"),
-            ("repeat",       "TEXT NOT NULL DEFAULT 'none'"),
-            ("completed_at", "TEXT"),
+            ("category",      "TEXT NOT NULL DEFAULT 'Другое'"),
+            ("tags",          "TEXT"),
+            ("notes",         "TEXT"),
+            ("repeat",        "TEXT NOT NULL DEFAULT 'none'"),
+            ("completed_at",  "TEXT"),
+            ("deadline_time", "TEXT"),
+            ("remind_at",     "TEXT"),
         ]:
             _add_col(conn, "tasks", col, defn)
 
@@ -124,15 +152,17 @@ def extract_tags(title: str) -> str:
     return ",".join(tags) if tags else ""
 
 
-def parse_quick_add(text: str) -> tuple[str, str, Optional[str]]:
-    """Parse 'Buy milk tomorrow high' → (title, priority, deadline)."""
+def parse_quick_add(text: str) -> tuple[str, str, Optional[str], Optional[str]]:
+    """Parse 'Buy milk tomorrow 15:30 high' → (title, priority, deadline, deadline_time)."""
     priority_map = {
         "высокий": "high", "высок": "high", "важно": "high", "срочно": "high",
         "high": "high", "низкий": "low", "низк": "low", "low": "low",
         "средний": "medium", "medium": "medium",
     }
+    import re as _re
     priority = "medium"
     deadline = None
+    deadline_time = None
     keep = []
     for word in text.split():
         w = word.lower().rstrip("!.,")
@@ -144,13 +174,23 @@ def parse_quick_add(text: str) -> tuple[str, str, Optional[str]]:
             deadline = (date.today() + timedelta(days=1)).strftime("%Y-%m-%d")
         elif w == "послезавтра":
             deadline = (date.today() + timedelta(days=2)).strftime("%Y-%m-%d")
+        elif _re.match(r'^\d{2}:\d{2}$', word):
+            try:
+                datetime.strptime(word, "%H:%M")
+                deadline_time = word
+            except ValueError:
+                keep.append(word)
         else:
             try:
                 deadline = datetime.strptime(word, "%d.%m.%Y").strftime("%Y-%m-%d")
             except ValueError:
-                keep.append(word)
+                try:
+                    dt = datetime.strptime(word, "%d.%m.%Y")
+                    deadline = dt.strftime("%Y-%m-%d")
+                except ValueError:
+                    keep.append(word)
     title = " ".join(keep) or text
-    return title, priority, deadline
+    return title, priority, deadline, deadline_time
 
 
 # ── Settings ──────────────────────────────────────────────────
@@ -223,15 +263,18 @@ def cleanup_old_logs():
 # ── Tasks ─────────────────────────────────────────────────────
 
 def add_task(user_id: int, title: str, priority: str, category: str,
-             deadline: Optional[str], notes: Optional[str], repeat: str) -> int:
+             deadline: Optional[str], notes: Optional[str], repeat: str,
+             deadline_time: Optional[str] = None,
+             remind_at: Optional[str] = None) -> int:
     tags = extract_tags(title)
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO tasks
-               (user_id, title, priority, category, tags, deadline, notes, repeat, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
-            (user_id, title, priority, category, tags, deadline, notes, repeat,
-             datetime.now().isoformat()),
+               (user_id, title, priority, category, tags, deadline, deadline_time,
+                remind_at, notes, repeat, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (user_id, title, priority, category, tags, deadline, deadline_time,
+             remind_at, notes, repeat, datetime.now().isoformat()),
         )
         conn.commit()
         return cur.lastrowid
@@ -323,7 +366,15 @@ def snooze_task(task_id: int, user_id: int, days: int = 1) -> bool:
         new_dl = (dl + timedelta(days=days)).strftime("%Y-%m-%d")
     else:
         new_dl = (date.today() + timedelta(days=days)).strftime("%Y-%m-%d")
-    return update_task(task_id, user_id, deadline=new_dl)
+    # Shift remind_at by the same number of days if it exists
+    kwargs: dict = {"deadline": new_dl}
+    if task.get("remind_at"):
+        try:
+            old_r = datetime.strptime(task["remind_at"], "%Y-%m-%d %H:%M")
+            kwargs["remind_at"] = (old_r + timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            kwargs["remind_at"] = None
+    return update_task(task_id, user_id, **kwargs)
 
 
 def snooze_overdue(user_id: int, days: int = 1):
@@ -347,8 +398,20 @@ def _create_repeat(task: dict):
         next_dl = dl.replace(year=y, month=m)
     else:
         return
+    # Recalculate remind_at for the new deadline
+    new_remind = None
+    if task.get("remind_at") and task.get("deadline_time"):
+        try:
+            old_remind = datetime.strptime(task["remind_at"], "%Y-%m-%d %H:%M")
+            old_dl_dt = datetime.strptime(f"{task['deadline']} {task['deadline_time']}", "%Y-%m-%d %H:%M")
+            diff = old_remind - old_dl_dt
+            new_dl_dt = datetime.combine(next_dl, datetime.strptime(task["deadline_time"], "%H:%M").time())
+            new_remind = (new_dl_dt + diff).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            pass
     add_task(task["user_id"], task["title"], task["priority"], task["category"],
-             next_dl.strftime("%Y-%m-%d"), task["notes"], task["repeat"])
+             next_dl.strftime("%Y-%m-%d"), task["notes"], task["repeat"],
+             deadline_time=task.get("deadline_time"), remind_at=new_remind)
 
 
 def delete_task(task_id: int, user_id: int) -> bool:
@@ -521,14 +584,114 @@ def check_achievements(user_id: int) -> List[str]:
             (user_id,),
         ).fetchone()[0]
 
+        # Night owl: completed after 23:00
+        night_owl = conn.execute(
+            """SELECT COUNT(*) FROM tasks
+               WHERE user_id=? AND done=1 AND completed_at IS NOT NULL
+               AND CAST(strftime('%H', completed_at) AS INTEGER) >= 23""",
+            (user_id,),
+        ).fetchone()[0]
+
+        # Early riser: completed before 7:00
+        early_riser = conn.execute(
+            """SELECT COUNT(*) FROM tasks
+               WHERE user_id=? AND done=1 AND completed_at IS NOT NULL
+               AND CAST(strftime('%H', completed_at) AS INTEGER) < 7""",
+            (user_id,),
+        ).fetchone()[0]
+
+        # Speed run: created and completed on the same day
+        speed_run = conn.execute(
+            """SELECT COUNT(*) FROM tasks
+               WHERE user_id=? AND done=1 AND completed_at IS NOT NULL
+               AND DATE(created_at) = DATE(completed_at)""",
+            (user_id,),
+        ).fetchone()[0]
+
+        # Multitasker: 5 tasks completed on one day
+        multitasker = conn.execute(
+            """SELECT COUNT(*) FROM (
+               SELECT DATE(completed_at) as day, COUNT(*) as cnt FROM tasks
+               WHERE user_id=? AND done=1 AND completed_at IS NOT NULL
+               GROUP BY day HAVING cnt >= 5)""",
+            (user_id,),
+        ).fetchone()[0]
+
+        # Inbox zero: no active tasks (and has created at least one)
+        active_count = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE user_id=? AND done=0", (user_id,)
+        ).fetchone()[0]
+        inbox_zero = (total_tasks >= 1 and active_count == 0)
+
+        # High priority tasks done
+        high_prio_done = conn.execute(
+            """SELECT COUNT(*) FROM tasks
+               WHERE user_id=? AND done=1 AND priority='high'""",
+            (user_id,),
+        ).fetchone()[0]
+
+        # Planner: 10 tasks with deadline
+        tasks_with_deadline = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE user_id=? AND deadline IS NOT NULL", (user_id,)
+        ).fetchone()[0]
+
+        # Subtask user
+        has_subtasks = conn.execute(
+            """SELECT COUNT(*) FROM subtasks
+               JOIN tasks ON tasks.id = subtasks.task_id
+               WHERE tasks.user_id=?""",
+            (user_id,),
+        ).fetchone()[0]
+
+        # Tag user: 3 distinct tags used
+        tag_rows = conn.execute(
+            "SELECT tags FROM tasks WHERE user_id=? AND tags IS NOT NULL AND tags != ''",
+            (user_id,),
+        ).fetchall()
+        all_tags = set()
+        for row in tag_rows:
+            for t in row[0].split(","):
+                t = t.strip()
+                if t:
+                    all_tags.add(t.lower())
+        distinct_tags = len(all_tags)
+
+        # Category master: 4 distinct categories used
+        distinct_categories = conn.execute(
+            "SELECT COUNT(DISTINCT category) FROM tasks WHERE user_id=?", (user_id,)
+        ).fetchone()[0]
+
+        # Repeat user: has a repeating task
+        has_repeat = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE user_id=? AND repeat != 'none'", (user_id,)
+        ).fetchone()[0]
+
     checks = [
-        ("first_task",  total_tasks >= 1),
-        ("done_10",     done_count >= 10),
-        ("done_50",     done_count >= 50),
-        ("done_100",    done_count >= 100),
-        ("streak_7",    streak >= 7),
-        ("streak_30",   streak >= 30),
-        ("early_bird",  early >= 1),
+        ("first_task",      total_tasks >= 1),
+        ("done_5",          done_count >= 5),
+        ("done_10",         done_count >= 10),
+        ("done_50",         done_count >= 50),
+        ("done_100",        done_count >= 100),
+        ("done_200",        done_count >= 200),
+        ("done_500",        done_count >= 500),
+        ("streak_3",        streak >= 3),
+        ("streak_7",        streak >= 7),
+        ("streak_14",       streak >= 14),
+        ("streak_30",       streak >= 30),
+        ("streak_100",      streak >= 100),
+        ("night_owl",       night_owl >= 1),
+        ("early_riser",     early_riser >= 1),
+        ("speed_run",       speed_run >= 1),
+        ("multitasker",     multitasker >= 1),
+        ("inbox_zero",      inbox_zero),
+        ("high_prio_10",    high_prio_done >= 10),
+        ("planner",         tasks_with_deadline >= 10),
+        ("early_bird",      early >= 1),
+        ("early_bird_5",    early >= 5),
+        ("subtask_user",    has_subtasks >= 1),
+        ("tag_user",        distinct_tags >= 3),
+        ("category_master", distinct_categories >= 4),
+        ("repeat_user",     has_repeat >= 1),
     ]
     for key, condition in checks:
         if condition and key not in existing:
