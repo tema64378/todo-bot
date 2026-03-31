@@ -135,6 +135,13 @@ def sort_keyboard(current: str) -> InlineKeyboardMarkup:
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.get_settings(update.effective_user.id)
+    mini_app_url = os.getenv("MINI_APP_URL", "")
+    kb = None
+    if mini_app_url:
+        from telegram import WebAppInfo
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📱 Открыть приложение", web_app=WebAppInfo(url=mini_app_url))
+        ]])
     await update.message.reply_text(
         "👋 *Привет! Я твой планировщик задач.*\n\n"
         "➕ /add — добавить задачу\n"
@@ -154,6 +161,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "✅ /done `ID` · 🗑 /delete `ID` · ✏️ /edit `ID`\n"
         "↩️ /undone `ID` · 📋 /copy `ID` · 📌 /subtasks `ID`",
         parse_mode="Markdown",
+        reply_markup=kb,
     )
 
 
@@ -1145,10 +1153,10 @@ async def post_shutdown(app: Application):
         s.shutdown(wait=False)
 
 
-def main():
+def create_app():
+    """Build and return the configured PTB Application (without running it)."""
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN не задан!")
-    db.init_db()
 
     req = HTTPXRequest(connect_timeout=30, read_timeout=30, write_timeout=30)
     app = (Application.builder().token(BOT_TOKEN).request(req)
@@ -1226,12 +1234,17 @@ def main():
     app.add_handler(CommandHandler("templates",    cmd_templates))
     app.add_handler(CommandHandler("export",       cmd_export))
     app.add_handler(CallbackQueryHandler(button_callback))
-    # Template name handler (after /add completes)
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND, handle_tmpl_name
     ))
 
-    log.info("Бот запущен!")
+    log.info("Бот сконфигурирован!")
+    return app
+
+
+def main():
+    db.init_db()
+    app = create_app()
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 
