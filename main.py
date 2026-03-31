@@ -17,13 +17,6 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def _start_uvicorn(port: int) -> None:
-    """Run uvicorn in its own thread with its own event loop."""
-    from api import app as fastapi_app
-    log.info("Starting web server on port %d", port)
-    uvicorn.run(fastapi_app, host="0.0.0.0", port=port, log_level="info")
-
-
 async def _run_bot_with_retry() -> None:
     """Run bot, restart on errors."""
     while True:
@@ -39,22 +32,30 @@ async def _run_bot_with_retry() -> None:
                     allowed_updates=Update.ALL_TYPES,
                 )
                 log.info("Bot polling started")
-                await asyncio.Event().wait()  # block until cancelled
+                await asyncio.Event().wait()
         except asyncio.CancelledError:
-            log.info("Bot task cancelled, shutting down")
+            log.info("Bot task cancelled")
             break
         except Exception as e:
-            log.error("Bot crashed: %s. Restarting in 15s...", e)
+            log.error("Bot crashed: %s. Restarting in 15s...", e, exc_info=True)
             await asyncio.sleep(15)
 
 
 async def _main() -> None:
     db.init_db()
+    log.info("DB initialised")
+
+    # Import api here so errors are visible in main traceback
+    from api import app as fastapi_app
+    log.info("API imported OK")
 
     port = int(os.getenv("PORT", 8080))
+    log.info("Starting web server on port %d", port)
+
     web_thread = threading.Thread(
-        target=_start_uvicorn,
-        args=(port,),
+        target=lambda: uvicorn.run(
+            fastapi_app, host="0.0.0.0", port=port, log_level="info"
+        ),
         daemon=True,
         name="uvicorn",
     )
