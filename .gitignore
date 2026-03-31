@@ -8,3 +8,4 @@ launchd.log
 bot_debug.log
 bot.pid
 nohup.out
+frontend/node_modules/
