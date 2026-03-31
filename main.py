@@ -1,9 +1,10 @@
-"""Entry point: runs FastAPI (uvicorn) + Telegram bot concurrently."""
+"""Entry point: runs FastAPI (uvicorn) in a thread + Telegram bot in asyncio."""
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
+import threading
 
 import uvicorn
 
@@ -16,8 +17,15 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-async def _run_bot_with_retry():
-    """Run bot in background, restart on errors."""
+def _start_uvicorn(port: int) -> None:
+    """Run uvicorn in its own thread with its own event loop."""
+    from api import app as fastapi_app
+    log.info("Starting web server on port %d", port)
+    uvicorn.run(fastapi_app, host="0.0.0.0", port=port, log_level="info")
+
+
+async def _run_bot_with_retry() -> None:
+    """Run bot, restart on errors."""
     while True:
         try:
             from bot import create_app
@@ -36,32 +44,24 @@ async def _run_bot_with_retry():
             log.info("Bot task cancelled, shutting down")
             break
         except Exception as e:
-            log.error(f"Bot crashed: {e}. Restarting in 15s...")
+            log.error("Bot crashed: %s. Restarting in 15s...", e)
             await asyncio.sleep(15)
 
 
-async def _main():
+async def _main() -> None:
     db.init_db()
 
-    from api import app as fastapi_app
-
     port = int(os.getenv("PORT", 8080))
-    config = uvicorn.Config(
-        fastapi_app, host="0.0.0.0", port=port, log_level="info"
+    web_thread = threading.Thread(
+        target=_start_uvicorn,
+        args=(port,),
+        daemon=True,
+        name="uvicorn",
     )
-    server = uvicorn.Server(config)
+    web_thread.start()
+    log.info("Web thread started")
 
-    # Bot runs as background task — its failure won't kill the web server
-    bot_task = asyncio.create_task(_run_bot_with_retry())
-
-    # Uvicorn is the primary blocking task
-    await server.serve()
-
-    bot_task.cancel()
-    try:
-        await bot_task
-    except asyncio.CancelledError:
-        pass
+    await _run_bot_with_retry()
 
 
 if __name__ == "__main__":
